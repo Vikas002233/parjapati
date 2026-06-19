@@ -9,6 +9,14 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+const uploadDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("Uploads folder created");
+}
+
 app.use("/uploads", express.static("uploads"));
 
 const crypto = require("crypto");
