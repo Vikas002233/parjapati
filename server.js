@@ -6,19 +6,20 @@ const cors = require("cors");
 const path = require("path");
 
 const app = express();
+const fs = require("fs");
+
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads", { recursive: true });
+}
+
 
 app.use(cors());
 app.use(express.json());
 
-const fs = require("fs");
 
 
-const uploadDir = path.join(__dirname, "uploads");
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("Uploads folder created");
-}
+
 
 app.use("/uploads", express.static("uploads"));
 
@@ -139,9 +140,10 @@ console.log("hello", Category,
       Bestseller,
     ],
     (err, result) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
+    if (err) {
+  console.log("PRODUCT ERROR:", err);
+  return res.status(500).json(err);
+}
 
       res.json({
         success: true,
