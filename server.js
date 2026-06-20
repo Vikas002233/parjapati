@@ -470,7 +470,7 @@ app.post("/api/orders", (req, res) => {
     const productId = item.ProductID || item.id;
 
     db.query(
-      "SELECT FinalDayDelivery FROM Delivery WHERE ProductID = ? LIMIT 1",
+      "SELECT FinalDayDelivery FROM delivery WHERE ProductID = ? LIMIT 1",
       [productId],
       (err, deliveryResult) => {
         if (err) {
@@ -487,7 +487,7 @@ app.post("/api/orders", (req, res) => {
             : null;
 
         const sql = `
-          INSERT INTO Orders
+          INSERT INTO orders
           (
             ProductID,
             Qty,
@@ -553,7 +553,7 @@ app.get("/api/orders/:userId", (req, res) => {
       o.Packed,
       o.Shipped,
       o.Delivered
-    FROM Orders o
+    FROM orders o
     INNER JOIN products p
       ON o.ProductID = p.ProductID
     WHERE o.UserID = ?
@@ -634,7 +634,7 @@ app.put("/api/orders/:orderId/status", (req, res) => {
   const { orderId } = req.params;
   const { status, value } = req.body; // status can be 'Packed', 'Shipped', or 'Delivered', value can be 0 or 1
 
-  const sql = `UPDATE Orders SET ${status} = ? WHERE OrderID = ?`;
+  const sql = `UPDATE orders SET ${status} = ? WHERE OrderID = ?`;
 
   db.query(sql, [value, orderId], (err, result) => {
     if (err) {
@@ -674,7 +674,7 @@ const options = {
     }
 
     const sql = `
-      INSERT INTO OrderPayment
+      INSERT INTO orderpayment
       (
         UserID,
         Amount,
@@ -734,7 +734,7 @@ app.post("/api/payment/verify", (req, res) => {
     crypto
       .createHmac(
         "sha256",
-        "YMX8dXrZQQdpIyfVGgKxMDC2"
+        "KlO4Zz1XkrSazW6TMrpuOwUc"
       )
       .update(body.toString())
       .digest("hex");
@@ -745,7 +745,7 @@ app.post("/api/payment/verify", (req, res) => {
   ) {
 
     const sql = `
-UPDATE OrderPayment
+UPDATE orderpayment
 SET
   Status = 1,
   RazorpayOrderID = ?,
@@ -783,7 +783,7 @@ AND UserID = ?
 
     db.query(
       `
-      UPDATE OrderPayment
+      UPDATE orderpayment
       SET Status = 2
       WHERE PaymentID = ?
       `,
@@ -814,7 +814,7 @@ app.get("/api/orderpayments", (req, res) => {
       PaymentMethod,
       PaymentDate,
       CreatedDate
-    FROM OrderPayment
+    FROM orderpayment
     WHERE IsDeleted = 0
     ORDER BY PaymentID DESC
   `;
@@ -841,7 +841,7 @@ app.delete("/api/orderpayments/:id", (req, res) => {
   const { id } = req.params;
 
   const sql = `
-    UPDATE OrderPayment
+    UPDATE orderpayment
     SET IsDeleted = 1
     WHERE PaymentID = ?
   `;
