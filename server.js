@@ -153,6 +153,15 @@ console.log("hello", Category,
   );
 });
 
+
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+
+
+
+
 // GET all products
 app.get("/api/products", (req, res) => {
   const sql = "SELECT * FROM products ORDER BY ProductID DESC";
