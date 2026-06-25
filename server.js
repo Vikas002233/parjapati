@@ -716,43 +716,127 @@ app.put("/api/orders/:orderId/status", (req, res) => {
 
 
 
+// app.post("/api/payment/create", async (req, res) => {
+//   try {
+//     const { UserID, Mobile, Amount } = req.body;
+
+// const order_id = "ORDER_" + Date.now();
+
+// const request = {
+//   order_amount: Number(Amount),
+//   order_currency: "INR",
+//   order_id,
+//   customer_details: {
+//     customer_id: String(UserID),
+//     customer_phone: String(Mobile)
+//   }
+// };
+
+//     const response = await Cashfree.PGCreateOrder(
+//       "2023-08-01",
+//       request
+//     );
+
+
+//     res.json({
+//       success: true,
+//       payment_session_id: response.data.payment_session_id,
+//       order_id: response.data.order_id
+//     });
+
+//   } catch (err) {
+//     console.log("CASHFREE ERROR:", err.response?.data || err);
+//     res.status(500).json({
+//       success: false,
+//       error: err.message
+//     });
+//   }
+// });
 app.post("/api/payment/create", async (req, res) => {
   try {
+
     const { UserID, Mobile, Amount } = req.body;
 
-const order_id = "ORDER_" + Date.now();
+    const order_id = "ORDER_" + Date.now();
 
-const request = {
-  order_amount: Number(Amount),
-  order_currency: "INR",
-  order_id,
-  customer_details: {
-    customer_id: String(UserID),
-    customer_phone: String(Mobile)
-  }
-};
+    const request = {
+      order_amount: Number(Amount),
+      order_currency: "INR",
+      order_id,
+      customer_details: {
+        customer_id: String(UserID),
+        customer_phone: String(Mobile)
+      }
+    };
 
     const response = await Cashfree.PGCreateOrder(
       "2023-08-01",
       request
     );
 
+    console.log("CASHFREE ORDER:", response.data);
 
-    res.json({
-      success: true,
-      payment_session_id: response.data.payment_session_id,
-      order_id: response.data.order_id
-    });
+    const sql = `
+      INSERT INTO orderpayment
+      (
+        UserID,
+        Amount,
+        Status,
+        TransactionID,
+        PaymentGateway,
+        CreatedDate
+      )
+      VALUES (?, ?, 0, ?, 'Cashfree', NOW())
+    `;
+
+    db.query(
+      sql,
+      [
+        UserID,
+        Amount,
+        response.data.order_id
+      ],
+      (err, result) => {
+
+        if (err) {
+          console.log("DB INSERT ERROR:", err);
+
+          return res.status(500).json({
+            success: false,
+            error: err.message
+          });
+        }
+
+        console.log(
+          "PAYMENT RECORD CREATED:",
+          result.insertId
+        );
+
+        res.json({
+          success: true,
+          PaymentID: result.insertId,
+          payment_session_id:
+            response.data.payment_session_id,
+          order_id:
+            response.data.order_id
+        });
+
+      }
+    );
 
   } catch (err) {
-    console.log("CASHFREE ERROR:", err.response?.data || err);
+
+    console.log(
+      "CASHFREE ERROR:",
+      err.response?.data || err
+    );
+
     res.status(500).json({
       success: false,
       error: err.message
     });
   }
 });
-
 
 
 // app.post("/api/payment/verify", (req, res) => {
@@ -866,14 +950,84 @@ const request = {
 // });
 
 
+// app.post("/api/payment/verify", async (req, res) => {
+//   try {
+
+//     const { order_id, UserID } = req.body;
+
+//     const response = await Cashfree.PGFetchOrder(order_id);
+
+//     console.log(response.data);
+
+//     if (response.data.order_status === "PAID") {
+
+//       const sql = `
+//       UPDATE orderpayment
+//       SET
+//         Status = 1,
+//         TransactionID = ?,
+//         PaymentGateway = 'Cashfree',
+//         PaymentDate = NOW()
+//       WHERE TransactionID = ?
+//       `;
+
+//       db.query(
+//         sql,
+//         [
+//           response.data.cf_order_id, // unique cashfree order
+//           order_id
+//         ],
+//         (err) => {
+
+//           if (err) {
+//             console.log("DB UPDATE ERROR:", err);
+//             return res.status(500).json({
+//               success: false
+//             });
+//           }
+
+//           res.json({
+//             success: true,
+//             data: response.data
+//           });
+//         }
+//       );
+
+//     } else {
+
+//       db.query(
+//         `
+//         UPDATE orderpayment
+//         SET Status = 2
+//         WHERE TransactionID = ?
+//         `,
+//         [order_id]
+//       );
+
+//       res.json({
+//         success: false
+//       });
+//     }
+
+//   } catch (err) {
+//     console.log("VERIFY ERROR:", err);
+//     res.status(500).json({
+//       success: false
+//     });
+//   }
+// });
 app.post("/api/payment/verify", async (req, res) => {
   try {
 
-    const { order_id, UserID } = req.body;
+    const { order_id } = req.body;
 
-    const response = await Cashfree.PGFetchOrder(order_id);
+    const response =
+      await Cashfree.PGFetchOrder(order_id);
 
-    console.log(response.data);
+    console.log(
+      "VERIFY RESPONSE:",
+      response.data
+    );
 
     if (response.data.order_status === "PAID") {
 
@@ -881,7 +1035,9 @@ app.post("/api/payment/verify", async (req, res) => {
       UPDATE orderpayment
       SET
         Status = 1,
-        TransactionID = ?,
+        RazorpayOrderID = ?,
+        RazorpayPaymentID = ?,
+        PaymentSignature = ?,
         PaymentGateway = 'Cashfree',
         PaymentDate = NOW()
       WHERE TransactionID = ?
@@ -890,22 +1046,33 @@ app.post("/api/payment/verify", async (req, res) => {
       db.query(
         sql,
         [
-          response.data.cf_order_id, // unique cashfree order
+          response.data.order_id,
+          response.data.cf_order_id,
+          response.data.payment_session_id,
           order_id
         ],
-        (err) => {
+        (err, result) => {
 
           if (err) {
-            console.log("DB UPDATE ERROR:", err);
+            console.log(
+              "DB UPDATE ERROR:",
+              err
+            );
+
             return res.status(500).json({
               success: false
             });
           }
 
+          console.log(
+            "UPDATED:",
+            result.affectedRows
+          );
+
           res.json({
-            success: true,
-            data: response.data
+            success: true
           });
+
         }
       );
 
@@ -926,14 +1093,17 @@ app.post("/api/payment/verify", async (req, res) => {
     }
 
   } catch (err) {
-    console.log("VERIFY ERROR:", err);
+
+    console.log(
+      "VERIFY ERROR:",
+      err.response?.data || err
+    );
+
     res.status(500).json({
       success: false
     });
   }
 });
-
-
 app.get("/api/orderpayments", (req, res) => {
 
   const sql = `
