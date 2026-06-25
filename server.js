@@ -6,30 +6,27 @@ const cors = require("cors");
 const path = require("path");
 
 const app = express();
-const fs = require("fs");
-
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads", { recursive: true });
-}
-
 
 app.use(cors());
 app.use(express.json());
-
-
-
-
-
-
 app.use("/uploads", express.static("uploads"));
 
-const crypto = require("crypto");
-const Razorpay = require("razorpay");
+// const crypto = require("crypto");
+// const Razorpay = require("razorpay");
+const { Cashfree, CFEnvironment } = require("cashfree-pg");
 
-const razorpay = new Razorpay({
-  key_id: "rzp_test_T3wtWaYwxmQabx",
-  key_secret: "KlO4Zz1XkrSazW6TMrpuOwUc"
-});
+Cashfree.XClientId = process.env.CASHFREE_APP_ID;
+Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
+// Cashfree.XEnvironment = CFEnvironment.SANDBOX;
+Cashfree.XEnvironment = CFEnvironment.PRODUCTION;
+
+
+console.log("Methods:", Object.getOwnPropertyNames(Cashfree));
+
+// const razorpay = new Razorpay({
+//   key_id: "rzp_test_T3wtWaYwxmQabx",
+//   key_secret: "KlO4Zz1XkrSazW6TMrpuOwUc"
+// });
 
 
 
@@ -140,10 +137,9 @@ console.log("hello", Category,
       Bestseller,
     ],
     (err, result) => {
-    if (err) {
-  console.log("PRODUCT ERROR:", err);
-  return res.status(500).json(err);
-}
+      if (err) {
+        return res.status(500).json(err);
+      }
 
       res.json({
         success: true,
@@ -152,15 +148,6 @@ console.log("hello", Category,
     }
   );
 });
-
-
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
-
-
-
-
 
 // GET all products
 app.get("/api/products", (req, res) => {
@@ -240,9 +227,10 @@ app.put("/api/products/:id", upload.single("image"), (req, res) => {
   params.push(id);
 
   db.query(sql, params, (err, result) => {
-    if (err) {
-      return res.status(500).json(err);
-    }
+ if (err) {
+  console.log("PRODUCT ERROR:", err);
+  return res.status(500).json(err);
+}
     res.json({
       success: true,
       message: "Product Updated Successfully",
@@ -393,6 +381,12 @@ app.put("/api/defrt/:id", (req, res) => {
 });
 
 app.use("/uploads", express.static("uploads"))
+
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
+
 app.get("/api/products", (req, res) => {
   const sql = "SELECT * FROM products ORDER BY ProductID DESC";
 
@@ -654,148 +648,282 @@ app.put("/api/orders/:orderId/status", (req, res) => {
 
 
 
-app.post("/api/payment/create", (req, res) => {
-  const { UserID,Mobile, Amount } = req.body;
+// app.post("/api/payment/create", (req, res) => {
+//   const { UserID,Mobile, Amount } = req.body;
+// console.log("hy")
+// const options = {
+//   amount: Amount * 100, // INR -> Paise
+//   currency: "INR",
+//   receipt: `user_${UserID}_${Date.now()}`,
+//    notes: {
+//     UserID: String(UserID),
+//     Mobile: String(Mobile)
+//   }
+// };
 
-const options = {
-  amount: Amount * 100, // INR -> Paise
-  currency: "INR",
-  receipt: `user_${UserID}_${Date.now()}`,
-   notes: {
-    UserID: String(UserID),
-    Mobile: String(Mobile)
+
+//   razorpay.orders.create(options, (err, order) => {
+//     if (err) {
+//       return res.status(500).json({ success: false });
+//     }
+
+//     const sql = `
+//       INSERT INTO orderpayment
+//       (
+//         UserID,
+//         Amount,
+//         Status,
+//         TransactionID,
+//         PaymentGateway,
+//         CreatedDate
+//       )
+//       VALUES (?, ?, 0, ?, 'Razorpay', NOW())
+//     `;
+// db.query(
+//   sql,
+//   [UserID, Amount, order.id],
+//   (err2, result) => {
+
+//     if (err2) {
+//       console.log("DB INSERT ERROR:", err2);
+//       return res.status(500).json({
+//         success: false,
+//         error: err2.message
+//       });
+//     }
+
+//     console.log("INSERT SUCCESS:", result);
+
+//     res.json({
+//       success: true,
+//       order,
+//       PaymentID: result.insertId
+//     });
+//   }
+// );
+//   });
+// });
+
+
+
+
+
+app.post("/api/payment/create", async (req, res) => {
+  try {
+    const { UserID, Mobile, Amount } = req.body;
+
+const order_id = "ORDER_" + Date.now();
+
+const request = {
+  order_amount: Number(Amount),
+  order_currency: "INR",
+  order_id,
+  customer_details: {
+    customer_id: String(UserID),
+    customer_phone: String(Mobile)
   }
 };
 
-
-  razorpay.orders.create(options, (err, order) => {
-    if (err) {
-      return res.status(500).json({ success: false });
-    }
-
-    const sql = `
-      INSERT INTO orderpayment
-      (
-        UserID,
-        Amount,
-        Status,
-        TransactionID,
-        PaymentGateway,
-        CreatedDate
-      )
-      VALUES (?, ?, 0, ?, 'Razorpay', NOW())
-    `;
-
-    db.query(
-      sql,
-      [
-        UserID,
-        Amount,
-        order.id
-      ],
-      (err2, result) => {
-
-        if (err2) {
-          return res.status(500).json({
-            success: false
-          });
-        }
-
-        res.json({
-          success: true,
-          order,
-          PaymentID: result.insertId
-        });
-      }
-    );
-  });
-});
-
-
-
-
-
-app.post("/api/payment/verify", (req, res) => {
-
-  const {
-    UserID,
-    PaymentID,
-    razorpay_order_id,
-    razorpay_payment_id,
-    razorpay_signature
-  } = req.body;
-
-  const body =
-    razorpay_order_id +
-    "|" +
-    razorpay_payment_id;
-
-  const expectedSignature =
-    crypto
-      .createHmac(
-        "sha256",
-        "KlO4Zz1XkrSazW6TMrpuOwUc"
-      )
-      .update(body.toString())
-      .digest("hex");
-
-  if (
-    expectedSignature ===
-    razorpay_signature
-  ) {
-
-    const sql = `
-UPDATE orderpayment
-SET
-  Status = 1,
-  RazorpayOrderID = ?,
-  RazorpayPaymentID = ?,
-  PaymentSignature = ?,
-  PaymentDate = NOW()
-WHERE PaymentID = ?
-AND UserID = ?
-`;
-
-    db.query(
-      sql,
-     [
-    razorpay_order_id,
-    razorpay_payment_id,
-    razorpay_signature,
-    PaymentID,
-    UserID
-  ],
-      (err) => {
-
-        if (err) {
-          return res.status(500).json({
-            success: false
-          });
-        }
-
-        res.json({
-          success: true
-        });
-      }
+    const response = await Cashfree.PGCreateOrder(
+      "2023-08-01",
+      request
     );
 
-  } else {
 
-    db.query(
-      `
-      UPDATE orderpayment
-      SET Status = 2
-      WHERE PaymentID = ?
-      `,
-      [PaymentID]
-    );
+    res.json({
+      success: true,
+      payment_session_id: response.data.payment_session_id,
+      order_id: response.data.order_id
+    });
 
-    res.status(400).json({
-      success: false
+  } catch (err) {
+    console.log("CASHFREE ERROR:", err.response?.data || err);
+    res.status(500).json({
+      success: false,
+      error: err.message
     });
   }
 });
 
+
+
+// app.post("/api/payment/verify", (req, res) => {
+
+//   const {
+//     UserID,
+//     PaymentID,
+//     razorpay_order_id,
+//     razorpay_payment_id,
+//     razorpay_signature
+//   } = req.body;
+
+//   const body =
+//     razorpay_order_id +
+//     "|" +
+//     razorpay_payment_id;
+
+//   const expectedSignature =
+//     crypto
+//       .createHmac(
+//         "sha256",
+//         "KlO4Zz1XkrSazW6TMrpuOwUc"
+//       )
+//       .update(body.toString())
+//       .digest("hex");
+
+//   if (
+//     expectedSignature ===
+//     razorpay_signature
+//   ) {
+
+//     const sql = `
+// UPDATE orderpayment
+// SET
+//   Status = 1,
+//   RazorpayOrderID = ?,
+//   RazorpayPaymentID = ?,
+//   PaymentSignature = ?,
+//   PaymentDate = NOW()
+// WHERE PaymentID = ?
+// AND UserID = ?
+// `;
+
+//     db.query(
+//       sql,
+//      [
+//     razorpay_order_id,
+//     razorpay_payment_id,
+//     razorpay_signature,
+//     PaymentID,
+//     UserID
+//   ],
+//       (err) => {
+
+//         if (err) {
+//           return res.status(500).json({
+//             success: false
+//           });
+//         }
+
+//         res.json({
+//           success: true
+//         });
+//       }
+//     );
+
+//   } else {
+
+//     db.query(
+//       `
+//       UPDATE orderpayment
+//       SET Status = 2
+//       WHERE PaymentID = ?
+//       `,
+//       [PaymentID]
+//     );
+
+//     res.status(400).json({
+//       success: false
+//     });
+//   }
+// });
+
+// app.post("/api/payment/verify", async (req, res) => {
+//   try {
+
+//     const { order_id } = req.body;
+
+//     const response =
+//       await Cashfree.PGFetchOrder(order_id);
+
+//     if (
+//       response.data.order_status ===
+//       "PAID"
+//     ) {
+//       res.json({
+//         success: true
+//       });
+//     } else {
+//       res.json({
+//         success: false
+//       });
+//     }
+
+//   } catch (err) {
+//     console.log(err);
+//     res.status(500).json({
+//       success: false
+//     });
+//   }
+// });
+
+
+app.post("/api/payment/verify", async (req, res) => {
+  try {
+
+    const { order_id, UserID } = req.body;
+
+    const response = await Cashfree.PGFetchOrder(order_id);
+
+    console.log(response.data);
+
+    if (response.data.order_status === "PAID") {
+
+      const sql = `
+      UPDATE orderpayment
+      SET
+        Status = 1,
+        TransactionID = ?,
+        PaymentGateway = 'Cashfree',
+        PaymentDate = NOW()
+      WHERE TransactionID = ?
+      `;
+
+      db.query(
+        sql,
+        [
+          response.data.cf_order_id, // unique cashfree order
+          order_id
+        ],
+        (err) => {
+
+          if (err) {
+            console.log("DB UPDATE ERROR:", err);
+            return res.status(500).json({
+              success: false
+            });
+          }
+
+          res.json({
+            success: true,
+            data: response.data
+          });
+        }
+      );
+
+    } else {
+
+      db.query(
+        `
+        UPDATE orderpayment
+        SET Status = 2
+        WHERE TransactionID = ?
+        `,
+        [order_id]
+      );
+
+      res.json({
+        success: false
+      });
+    }
+
+  } catch (err) {
+    console.log("VERIFY ERROR:", err);
+    res.status(500).json({
+      success: false
+    });
+  }
+});
 
 
 app.get("/api/orderpayments", (req, res) => {
