@@ -22,7 +22,15 @@ Cashfree.XEnvironment = CFEnvironment.PRODUCTION;
 
 
 console.log("Methods:", Object.getOwnPropertyNames(Cashfree));
+const fs = require("fs");
 
+
+const uploadDir = path.join(__dirname, "uploads");
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("✅ uploads folder created");
+}
 // const razorpay = new Razorpay({
 //   key_id: "rzp_test_T3wtWaYwxmQabx",
 //   key_secret: "KlO4Zz1XkrSazW6TMrpuOwUc"
