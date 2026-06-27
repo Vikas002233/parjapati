@@ -17,20 +17,11 @@ const { Cashfree, CFEnvironment } = require("cashfree-pg");
 
 Cashfree.XClientId = process.env.CASHFREE_APP_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
-// Cashfree.XEnvironment = CFEnvironment.SANDBOX;
-Cashfree.XEnvironment = CFEnvironment.PRODUCTION;
+Cashfree.XEnvironment = CFEnvironment.SANDBOX; // for local testing with test keys
+// Cashfree.XEnvironment = CFEnvironment.PRODUCTION; // Switch when live with production keys
 
 
-console.log("Methods:", Object.getOwnPropertyNames(Cashfree));
-const fs = require("fs");
 
-
-const uploadDir = path.join(__dirname, "uploads");
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("✅ uploads folder created");
-}
 // const razorpay = new Razorpay({
 //   key_id: "rzp_test_T3wtWaYwxmQabx",
 //   key_secret: "KlO4Zz1XkrSazW6TMrpuOwUc"
@@ -99,7 +90,7 @@ app.post("/api/products", upload.single("image"), (req, res) => {
     DiscountPercent,
     Bestseller,
   } = req.body;
-console.log("hello", Category,
+  console.log("hello", Category,
     ProductName,
     Rating,
     TotalRatings,
@@ -212,7 +203,7 @@ app.put("/api/products/:id", upload.single("image"), (req, res) => {
       DiscountPercent = ?,
       Bestseller = ?
   `;
-  
+
   let params = [
     Category,
     ProductName,
@@ -235,10 +226,10 @@ app.put("/api/products/:id", upload.single("image"), (req, res) => {
   params.push(id);
 
   db.query(sql, params, (err, result) => {
- if (err) {
-  console.log("PRODUCT ERROR:", err);
-  return res.status(500).json(err);
-}
+    if (err) {
+      console.log("PRODUCT ERROR:", err);
+      return res.status(500).json(err);
+    }
     res.json({
       success: true,
       message: "Product Updated Successfully",
@@ -310,7 +301,7 @@ app.get("/api/users", (req, res) => {
   const sql = "SELECT * FROM users ORDER BY UserID DESC";
   db.query(sql, (err, results) => {
     if (err) {
-      return res.status(500).json(err); 
+      return res.status(500).json(err);
     }
     res.json(results);
   });
@@ -752,6 +743,7 @@ app.put("/api/orders/:orderId/status", (req, res) => {
 //     });
 //   }
 // });
+
 app.post("/api/payment/create", async (req, res) => {
   try {
 
@@ -769,12 +761,14 @@ app.post("/api/payment/create", async (req, res) => {
       }
     };
 
+    console.log("CREATE ORDER REQUEST:", { UserID, Mobile, Amount });
+
     const response = await Cashfree.PGCreateOrder(
       "2023-08-01",
       request
     );
 
-    console.log("CASHFREE ORDER:", response.data);
+    console.log("CASHFREE ORDER SUCCESS:", response.data);
 
     const sql = `
       INSERT INTO orderpayment
@@ -837,7 +831,6 @@ app.post("/api/payment/create", async (req, res) => {
     });
   }
 });
-
 
 // app.post("/api/payment/verify", (req, res) => {
 
@@ -1016,91 +1009,89 @@ app.post("/api/payment/create", async (req, res) => {
 //     });
 //   }
 // });
-// app.post("/api/payment/verify", async (req, res) => {
+
+// app.post("/api/payment/create", async (req, res) => {
 //   try {
 
-//     const { order_id } = req.body;
+//     const { UserID, Mobile, Amount } = req.body;
 
-//     const response =
-//       await Cashfree.PGFetchOrder(order_id);
+//     const order_id = "ORDER_" + Date.now();
 
-//     console.log(
-//       "VERIFY RESPONSE:",
-//       response.data
+//     const request = {
+//       order_amount: Number(Amount),
+//       order_currency: "INR",
+//       order_id,
+//       customer_details: {
+//         customer_id: String(UserID),
+//         customer_phone: String(Mobile)
+//       }
+//     };
+
+//     const response = await Cashfree.PGCreateOrder(
+//       "2023-08-01",
+//       request
 //     );
 
-//     if (response.data.order_status === "PAID") {
+//     console.log("CASHFREE ORDER:", response.data);
 
-//       const sql = `
-//       UPDATE orderpayment
-//       SET
-//         Status = 1,
-//         RazorpayOrderID = ?,
-//         RazorpayPaymentID = ?,
-//         PaymentSignature = ?,
-//         PaymentGateway = 'Cashfree',
-//         PaymentDate = NOW()
-//       WHERE TransactionID = ?
-//       `;
+//     const sql = `
+//       INSERT INTO orderpayment
+//       (
+//         UserID,
+//         Amount,
+//         Status,
+//         TransactionID,
+//         PaymentGateway,
+//         CreatedDate
+//       )
+//       VALUES (?, ?, 0, ?, 'Cashfree', NOW())
+//     `;
 
-//       db.query(
-//         sql,
-//         [
-//           response.data.order_id,
-//           response.data.cf_order_id,
-//           response.data.payment_session_id,
-//           order_id
-//         ],
-//         (err, result) => {
+//     db.query(
+//       sql,
+//       [
+//         UserID,
+//         Amount,
+//         response.data.order_id
+//       ],
+//       (err, result) => {
 
-//           if (err) {
-//             console.log(
-//               "DB UPDATE ERROR:",
-//               err
-//             );
+//         if (err) {
+//           console.log("DB INSERT ERROR:", err);
 
-//             return res.status(500).json({
-//               success: false
-//             });
-//           }
-
-//           console.log(
-//             "UPDATED:",
-//             result.affectedRows
-//           );
-
-//           res.json({
-//             success: true
+//           return res.status(500).json({
+//             success: false,
+//             error: err.message
 //           });
-
 //         }
-//       );
 
-//     } else {
+//         console.log(
+//           "PAYMENT RECORD CREATED:",
+//           result.insertId
+//         );
 
-//       db.query(
-//         `
-//         UPDATE orderpayment
-//         SET Status = 2
-//         WHERE TransactionID = ?
-//         `,
-//         [order_id]
-//       );
+//         res.json({
+//           success: true,
+//           PaymentID: result.insertId,
+//           payment_session_id:
+//             response.data.payment_session_id,
+//           order_id:
+//             response.data.order_id
+//         });
 
-//       res.json({
-//         success: false
-//       });
-//     }
+//       }
+//     );
 
 //   } catch (err) {
 
 //     console.log(
-//       "VERIFY ERROR:",
+//       "CASHFREE ERROR:",
 //       err.response?.data || err
 //     );
 
 //     res.status(500).json({
-//       success: false
+//       success: false,
+//       error: err.message
 //     });
 //   }
 // });
@@ -1108,90 +1099,123 @@ app.post("/api/payment/create", async (req, res) => {
 
 app.post("/api/payment/verify", async (req, res) => {
   try {
+    const { order_id, UserID, items } = req.body;
 
-    const { order_id } = req.body;
-
-    console.log("VERIFY ORDER ID:", order_id);
+    console.log("VERIFY REQUEST:", { order_id, UserID, itemsCount: items?.length });
 
     const response = await Cashfree.PGFetchOrder(order_id);
-
-    console.log("CASHFREE RESPONSE:", response.data);
+    console.log("CASHFREE FETCH RESPONSE:", response.data);
 
     if (response.data.order_status !== "PAID") {
       return res.json({
         success: false,
-        message: "Payment not completed yet",
+        message: `Payment status is ${response.data.order_status}`,
         status: response.data.order_status
       });
     }
 
-    // Check row exists
-    db.query(
-      "SELECT * FROM orderpayment WHERE TransactionID = ?",
-      [order_id],
-      (err, rows) => {
+    // 1. Update Payment Record
+    const updatePaymentSql = `
+      UPDATE orderpayment
+      SET
+        Status = 1,
+        RazorpayOrderID = ?,
+        RazorpayPaymentID = ?,
+        PaymentSignature = ?,
+        PaymentGateway = 'Cashfree',
+        PaymentDate = NOW()
+      WHERE TransactionID = ?
+    `;
 
+    db.query(
+      updatePaymentSql,
+      [
+        response.data.order_id,
+        response.data.cf_order_id,
+        response.data.payment_session_id,
+        order_id
+      ],
+      (err, result) => {
         if (err) {
-          console.log(err);
-          return res.status(500).json({ success: false });
+          console.error("PAYMENT UPDATE ERROR:", err);
+          return res.status(500).json({ success: false, message: "Database update failed" });
         }
 
-        console.log("FOUND ROWS:", rows.length);
+        console.log("PAYMENT UPDATED, AFFECTED:", result.affectedRows);
 
-        if (rows.length === 0) {
-          return res.json({
-            success: false,
-            message: "TransactionID not found in DB"
+        if (result.affectedRows === 0) {
+          console.warn("No payment record found for TransactionID:", order_id);
+          // We continue anyway to create orders if items are present, or return error?
+          // Since payment is successful in Cashfree, we should probably try to create the order.
+        }
+
+        // 2. Create Orders (if items provided)
+        if (items && items.length > 0) {
+          let completed = 0;
+          let errors = [];
+
+          items.forEach((item) => {
+            const productId = item.ProductID;
+
+            // Fetch delivery days
+            db.query(
+              "SELECT FinalDayDelivery FROM delivery WHERE ProductID = ? LIMIT 1",
+              [productId],
+              (err, deliveryResult) => {
+                const finalDayDelivery = (deliveryResult && deliveryResult.length > 0)
+                  ? deliveryResult[0].FinalDayDelivery
+                  : null;
+
+                const orderSql = `
+                  INSERT INTO orders
+                  (ProductID, Qty, Price, TotalAmount, UserID, FinalDayDelivery)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                `;
+
+                db.query(
+                  orderSql,
+                  [
+                    productId,
+                    item.qty,
+                    item.Price,
+                    item.Price * item.qty,
+                    UserID,
+                    finalDayDelivery
+                  ],
+                  (err) => {
+                    completed++;
+                    if (err) {
+                      console.error("ORDER INSERT ERROR:", err);
+                      errors.push(err.message);
+                    }
+
+                    if (completed === items.length) {
+                      res.json({
+                        success: errors.length === 0,
+                        message: errors.length === 0 ? "Order Placed Successfully" : "Some orders failed to save",
+                        errors: errors.length > 0 ? errors : undefined
+                      });
+                    }
+                  }
+                );
+              }
+            );
+          });
+        } else {
+          // No items provided, just return payment update status
+          res.json({
+            success: true,
+            message: "Payment verified successfully"
           });
         }
-
-        const sql = `
-        UPDATE orderpayment
-        SET
-          Status = 1,
-          RazorpayOrderID = ?,
-          RazorpayPaymentID = ?,
-          PaymentSignature = ?,
-          PaymentGateway = 'Cashfree',
-          PaymentDate = NOW()
-        WHERE TransactionID = ?
-        `;
-
-        db.query(
-          sql,
-          [
-            response.data.order_id,
-            response.data.cf_order_id,
-            response.data.payment_session_id,
-            order_id
-          ],
-          (err2, result) => {
-
-            if (err2) {
-              console.log("UPDATE ERROR:", err2);
-              return res.status(500).json({
-                success: false
-              });
-            }
-
-            console.log("AFFECTED ROWS:", result.affectedRows);
-
-            res.json({
-              success: true,
-              affectedRows: result.affectedRows
-            });
-
-          }
-        );
-
       }
     );
 
   } catch (err) {
-    console.log(err.response?.data || err);
-
+    console.error("VERIFY CATCH ERROR:", err.response?.data || err);
     res.status(500).json({
-      success: false
+      success: false,
+      message: "Server error during verification"
     });
   }
 });
