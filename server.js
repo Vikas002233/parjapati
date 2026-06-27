@@ -17,8 +17,9 @@ const { Cashfree, CFEnvironment } = require("cashfree-pg");
 
 Cashfree.XClientId = process.env.CASHFREE_APP_ID;
 Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
-Cashfree.XEnvironment = CFEnvironment.SANDBOX; // for local testing with test keys
-// Cashfree.XEnvironment = CFEnvironment.PRODUCTION; // Switch when live with production keys
+// Cashfree.XEnvironment = CFEnvironment.SANDBOX; 
+Cashfree.XEnvironment = CFEnvironment.PRODUCTION;
+
 
 
 
