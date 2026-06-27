@@ -1100,9 +1100,9 @@ app.post("/api/payment/create", async (req, res) => {
 
 app.post("/api/payment/verify", async (req, res) => {
   try {
-    const { order_id, UserID, items } = req.body;
+    const { order_id, UserID, items, PaymentID } = req.body;
 
-    console.log("VERIFY REQUEST:", { order_id, UserID, itemsCount: items?.length });
+    console.log("VERIFY REQUEST DETAILS:", { order_id, UserID, itemsCount: items?.length, PaymentID });
 
     const response = await Cashfree.PGFetchOrder(order_id);
     console.log("CASHFREE FETCH RESPONSE:", response.data);
@@ -1110,12 +1110,12 @@ app.post("/api/payment/verify", async (req, res) => {
     if (response.data.order_status !== "PAID") {
       return res.json({
         success: false,
-        message: `Payment status is ${response.data.order_status}`,
+        message: `Payment status is ${response.data.order_status} (NOT PAID)`,
         status: response.data.order_status
       });
     }
 
-    // 1. Update Payment Record
+    // 1. Update Payment Record using PaymentID for reliability
     const updatePaymentSql = `
       UPDATE orderpayment
       SET
@@ -1125,7 +1125,7 @@ app.post("/api/payment/verify", async (req, res) => {
         PaymentSignature = ?,
         PaymentGateway = 'Cashfree',
         PaymentDate = NOW()
-      WHERE TransactionID = ?
+      WHERE PaymentID = ? OR TransactionID = ?
     `;
 
     db.query(
@@ -1134,6 +1134,7 @@ app.post("/api/payment/verify", async (req, res) => {
         response.data.order_id,
         response.data.cf_order_id,
         response.data.payment_session_id,
+        PaymentID,
         order_id
       ],
       (err, result) => {
@@ -1142,13 +1143,7 @@ app.post("/api/payment/verify", async (req, res) => {
           return res.status(500).json({ success: false, message: "Database update failed" });
         }
 
-        console.log("PAYMENT UPDATED, AFFECTED:", result.affectedRows);
-
-        if (result.affectedRows === 0) {
-          console.warn("No payment record found for TransactionID:", order_id);
-          // We continue anyway to create orders if items are present, or return error?
-          // Since payment is successful in Cashfree, we should probably try to create the order.
-        }
+        console.log("PAYMENT UPDATED SUCCESS, AFFECTED ROWS:", result.affectedRows);
 
         // 2. Create Orders (if items provided)
         if (items && items.length > 0) {
@@ -1169,8 +1164,8 @@ app.post("/api/payment/verify", async (req, res) => {
 
                 const orderSql = `
                   INSERT INTO orders
-                  (ProductID, Qty, Price, TotalAmount, UserID, FinalDayDelivery)
-                  VALUES (?, ?, ?, ?, ?, ?)
+                  (ProductID, Qty, Price, TotalAmount, UserID, FinalDayDelivery, Ordered)
+                  VALUES (?, ?, ?, ?, ?, ?, 1)
                 `;
 
                 db.query(
@@ -1203,7 +1198,6 @@ app.post("/api/payment/verify", async (req, res) => {
             );
           });
         } else {
-          // No items provided, just return payment update status
           res.json({
             success: true,
             message: "Payment verified successfully"
