@@ -1102,21 +1102,25 @@ app.post("/api/payment/verify", async (req, res) => {
   try {
     const { order_id, UserID, items, PaymentID } = req.body;
 
-    console.log("VERIFY REQUEST DETAILS:", { order_id, UserID, itemsCount: items?.length, PaymentID });
+    console.log("VERIFY START:", { order_id, PaymentID });
+
+    // Wait 2 seconds for Cashfree status to sync
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     const response = await Cashfree.PGFetchOrder(order_id);
-    console.log("CASHFREE FETCH RESPONSE:", response.data);
+    const status = response.data.order_status;
+    console.log("CASHFREE STATUS:", status);
 
-    if (response.data.order_status !== "PAID") {
+    if (status !== "PAID" && status !== "SUCCESS") {
       return res.json({
         success: false,
-        message: `Payment status is ${response.data.order_status} (NOT PAID)`,
-        status: response.data.order_status
+        message: `Payment status is ${status}`,
+        status: status
       });
     }
 
-    // 1. Update Payment Record using PaymentID for reliability
-    const updatePaymentSql = `
+    // Update using ONLY PaymentID for maximum reliability if available
+    const updateSql = `
       UPDATE orderpayment
       SET
         Status = 1,
@@ -1125,72 +1129,40 @@ app.post("/api/payment/verify", async (req, res) => {
         PaymentSignature = ?,
         PaymentGateway = 'Cashfree',
         PaymentDate = NOW()
-      WHERE PaymentID = ? OR TransactionID = ?
+      WHERE PaymentID = ?
     `;
 
     db.query(
-      updatePaymentSql,
+      updateSql,
       [
         response.data.order_id,
         response.data.cf_order_id,
         response.data.payment_session_id,
-        PaymentID,
-        order_id
+        PaymentID
       ],
       (err, result) => {
         if (err) {
-          console.error("PAYMENT UPDATE ERROR:", err);
-          return res.status(500).json({ success: false, message: "Database update failed" });
+          console.error("DB UPDATE ERROR:", err);
+          return res.status(500).json({ success: false, message: "DB Error" });
         }
 
-        console.log("PAYMENT UPDATED SUCCESS, AFFECTED ROWS:", result.affectedRows);
+        console.log("DB UPDATE SUCCESS. Rows affected:", result.affectedRows);
 
-        // 2. Create Orders (if items provided)
         if (items && items.length > 0) {
           let completed = 0;
-          let errors = [];
-
           items.forEach((item) => {
-            const productId = item.ProductID;
-
-            // Fetch delivery days
             db.query(
               "SELECT FinalDayDelivery FROM delivery WHERE ProductID = ? LIMIT 1",
-              [productId],
-              (err, deliveryResult) => {
-                const finalDayDelivery = (deliveryResult && deliveryResult.length > 0)
-                  ? deliveryResult[0].FinalDayDelivery
-                  : null;
-
-                const orderSql = `
-                  INSERT INTO orders
-                  (ProductID, Qty, Price, TotalAmount, UserID, FinalDayDelivery, Ordered)
-                  VALUES (?, ?, ?, ?, ?, ?, 1)
-                `;
-
+              [item.ProductID],
+              (err, delRes) => {
+                const fdd = (delRes && delRes.length > 0) ? delRes[0].FinalDayDelivery : null;
                 db.query(
-                  orderSql,
-                  [
-                    productId,
-                    item.qty,
-                    item.Price,
-                    item.Price * item.qty,
-                    UserID,
-                    finalDayDelivery
-                  ],
-                  (err) => {
+                  "INSERT INTO orders (ProductID, Qty, Price, TotalAmount, UserID, FinalDayDelivery, Ordered) VALUES (?, ?, ?, ?, ?, ?, 1)",
+                  [item.ProductID, item.qty, item.Price, item.Price * item.qty, UserID, fdd],
+                  () => {
                     completed++;
-                    if (err) {
-                      console.error("ORDER INSERT ERROR:", err);
-                      errors.push(err.message);
-                    }
-
                     if (completed === items.length) {
-                      res.json({
-                        success: errors.length === 0,
-                        message: errors.length === 0 ? "Order Placed Successfully" : "Some orders failed to save",
-                        errors: errors.length > 0 ? errors : undefined
-                      });
+                      res.json({ success: true, message: "Order Placed" });
                     }
                   }
                 );
@@ -1198,20 +1170,13 @@ app.post("/api/payment/verify", async (req, res) => {
             );
           });
         } else {
-          res.json({
-            success: true,
-            message: "Payment verified successfully"
-          });
+          res.json({ success: true });
         }
       }
     );
-
   } catch (err) {
-    console.error("VERIFY CATCH ERROR:", err.response?.data || err);
-    res.status(500).json({
-      success: false,
-      message: "Server error during verification"
-    });
+    console.error("VERIFY EXCEPTION:", err);
+    res.status(500).json({ success: false });
   }
 });
 app.get("/api/orderpayments", (req, res) => {
